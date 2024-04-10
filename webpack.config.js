@@ -24,6 +24,9 @@ const webBuilder = new ScratchWebpackConfigBuilder(common)
             fallback: {
                 Buffer: require.resolve('buffer/')
             }
+        },
+        experiments: {
+            asyncWebAssembly: true
         }
     })
     .addModuleRule({
