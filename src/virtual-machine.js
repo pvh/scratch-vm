@@ -43,6 +43,7 @@ const CORE_EXTENSIONS = [
 
 import {Repo} from '@automerge/automerge-repo';
 import {BroadcastChannelNetworkAdapter} from '@automerge/automerge-repo-network-broadcastchannel';
+import {BrowserWebSocketClientAdapter} from '@automerge/automerge-repo-network-websocket';
 
 /**
  * Handles connections between blocks, stage, and extensions.
@@ -53,13 +54,24 @@ export default class VirtualMachine extends EventEmitter {
         super();
 
         console.log('Repo loaded', Repo);
-        this.repo = new Repo({network: [new BroadcastChannelNetworkAdapter()]});
+        this.repo = new Repo({network: [new BroadcastChannelNetworkAdapter(), new BrowserWebSocketClientAdapter('wss://sync.automerge.org')]});
+        
+        const url = new URLSearchParams(window.location.search).get('url');
+        const handle = url ? this.repo.find(url) : this.repo.create();
+        if (!url) {
+            console.log('URL:', handle.url);
+        }
+        
 
         /**
          * VM runtime, to store blocks, I/O devices, sprites/targets, etc.
          * @type {!Runtime}
          */
-        this.runtime = new Runtime();
+        this.runtime = new Runtime(handle);
+        handle.on('change', () => {
+            this.runtime.targets.forEach(target => target.updateAllDrawableProperties());
+        });
+
         centralDispatch.setService('runtime', this.runtime).catch(e => {
             log.error(
                 `Failed to register runtime service: ${JSON.stringify(e)}`
@@ -548,13 +560,9 @@ export default class VirtualMachine extends EventEmitter {
 
         // XXX: obviously not here
         const url = new URLSearchParams(window.location.search).get('url');
-        runtime.handle = url ? this.repo.find(url) : this.repo.create(json);
         if (!url) {
-            console.log("URL:", runtime.handle.url);
+            runtime.handle.change(d => Object.assign(d, json));
         }
-        runtime.handle.on('change', () => {
-            runtime.targets.forEach(target => target.updateAllDrawableProperties());
-        });
 
         const deserializePromise = async function () {
             // deserialization takes the existing JSON objects and converts them into domain objects
@@ -1537,7 +1545,7 @@ export default class VirtualMachine extends EventEmitter {
         // broadcast ids from the list.
         for (let i = 0; i < this.runtime.targets.length; i++) {
             const currTarget = this.runtime.targets[i];
-            const currBlocks = currTarget.blocks._blocks;
+            const currBlocks = currTarget.blocks.getBlocks();
             for (const blockId in currBlocks) {
                 if (currBlocks[blockId].fields.BROADCAST_OPTION) {
                     const id = currBlocks[blockId].fields.BROADCAST_OPTION.id;

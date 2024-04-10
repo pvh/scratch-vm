@@ -342,7 +342,7 @@ const parseMonitorObject = (object, runtime, targets, extensions) => {
     // Property required for running monitored blocks.
     block.isMonitored = object.visible;
 
-    const existingMonitorBlock = runtime.monitorBlocks._blocks[block.id];
+    const existingMonitorBlock = runtime.monitorBlocks.getBlock(block.id);
     if (existingMonitorBlock) {
         // A monitor block already exists if the toolbox has been loaded and
         // the monitor block is not target specific (because the block gets recycled).

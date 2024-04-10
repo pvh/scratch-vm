@@ -177,8 +177,10 @@ let rendererDrawProfilerId = -1;
  * @constructor
  */
 class Runtime extends EventEmitter {
-    constructor () {
+    constructor (handle) {
         super();
+
+        this.handle = handle;
 
         /**
          * Target management and storage.

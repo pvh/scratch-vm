@@ -431,10 +431,10 @@ class Target extends EventEmitter {
             targetSpecificMonitorBlockIds = Object.keys(this.variables);
         } else {
             targetSpecificMonitorBlockIds = Object.keys(
-                this.runtime.monitorBlocks._blocks
+                this.runtime.monitorBlocks.getBlocks()
             ).filter(
                 (key) =>
-                    this.runtime.monitorBlocks._blocks[key].targetId === this.id
+                    this.runtime.monitorBlocks.getBlocks()[key].targetId === this.id
             );
         }
         for (const blockId of targetSpecificMonitorBlockIds) {

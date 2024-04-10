@@ -205,7 +205,7 @@ class Sprite {
 
     duplicate() {
         const newSprite = new Sprite(null, this.runtime);
-        const blocksContainer = this.blocks._blocks;
+        const blocksContainer = this.blocks.getBlocks();
         const originalBlocks = Object.keys(blocksContainer).map(
             (key) => blocksContainer[key]
         );

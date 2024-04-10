@@ -1224,7 +1224,7 @@ const deserializeMonitor = function (
 
     // If the runtime already has a monitor block for this monitor's id,
     // update the existing block with the relevant monitor information.
-    const existingMonitorBlock = runtime.monitorBlocks._blocks[monitorData.id];
+    const existingMonitorBlock = runtime.monitorBlocks.getBlocks(monitorData.id);
     if (existingMonitorBlock) {
         // A monitor block already exists if the toolbox has been loaded and
         // the monitor block is not target specific (because the block gets recycled).
