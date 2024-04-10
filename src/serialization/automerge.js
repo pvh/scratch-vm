@@ -1046,14 +1046,14 @@ const parseScratchObject = function (object, runtime, extensions, zip, assets) {
     console.log('Creating clone', sprite, target, object);
 
     if (Object.prototype.hasOwnProperty.call(object, 'blocks')) {
-        deserializeBlocks(object.blocks);
+        // deserializeBlocks(object.blocks);
         // Take a second pass to create objects and add extensions
         for (const blockId in object.blocks) {
             if (!Object.prototype.hasOwnProperty.call(object.blocks, blockId)) {
                 continue;
             }
             const blockJSON = object.blocks[blockId];
-            blocksObj.createBlock(blockJSON);
+            // blocksObj.createBlock(blockJSON);
 
             // If the block is from an extension, record it.
             const extensionID = getExtensionIdForOpcode(blockJSON.opcode);

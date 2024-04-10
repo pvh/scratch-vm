@@ -136,7 +136,9 @@ class Blocks {
      * @return {?object} Metadata about the block, if it exists.
      */
     getBlock (blockId) {
-        return Object.freeze(structuredClone(this.getTargetFromDoc()?.blocks?.[blockId]));
+        const deepFreeze = obj => (Object.freeze(obj), Object.keys(obj).forEach(key => typeof obj[key] === 'object' && !Object.isFrozen(obj[key]) && deepFreeze(obj[key])), obj);
+        const clone = structuredClone(this.getTargetFromDoc()?.blocks?.[blockId]);
+        return clone ? deepFreeze(clone) : clone;
     }
 
     updateBlock (blockId, callback) {
