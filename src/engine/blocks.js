@@ -31,13 +31,6 @@ class Blocks {
         }
 
         /**
-         * All top-level scripts in the workspace.
-         * A list of block IDs that represent scripts (i.e., first block in script).
-         * @type {Array.<String>}
-         */
-        this._scripts = [];
-
-        /**
          * Runtime Cache
          * @type {{inputs: {}, procedureParamNames: {}, procedureDefinitions: {}}}
          * @private
@@ -97,7 +90,7 @@ class Blocks {
         if (!this.automergeObjectId) {
             return {blocks: this._inMemoryBlocks};
         }
-        
+
         const target = (this.runtime.handle
             .docSync()
             .targets || []).find(
@@ -143,7 +136,7 @@ class Blocks {
      * @return {?object} Metadata about the block, if it exists.
      */
     getBlock (blockId) {
-        return this.getTargetFromDoc()?.blocks?.[blockId];
+        return Object.freeze(structuredClone(this.getTargetFromDoc()?.blocks?.[blockId]));
     }
 
     updateBlock (blockId, callback) {
@@ -157,7 +150,7 @@ class Blocks {
      * @return {Array.<string>} List of block IDs.
      */
     getScripts () {
-        return this._scripts;
+        return Object.freeze(structuredClone(this.getTargetFromDoc()?.scripts || []));
     }
 
     /**
@@ -671,9 +664,16 @@ class Blocks {
         if (Object.prototype.hasOwnProperty.call(this.getBlocks(), block.id)) {
             return;
         }
+
+        const removeUndefined = obj => Object.entries(obj).reduce((acc, [key, value]) =>
+            (value === undefined ?
+                acc :
+                {...acc, [key]: value && typeof value === 'object' ? removeUndefined(value) : value}),
+        {});
+
         // Create new block.
-        this.updateTargetInDoc((t) => {
-            t.blocks[block.id] = block;
+        this.updateTargetInDoc(t => {
+            t.blocks[block.id] = removeUndefined(block);
         });
 
         // Push block id to scripts array.
@@ -699,164 +699,164 @@ class Blocks {
         if (['field', 'mutation', 'checkbox'].indexOf(args.element) === -1) {
             return;
         }
-        let block = this.getBlock(args.id);
-        if (typeof block === 'undefined') return;
-        switch (args.element) {
-        case 'field':
-            // TODO when the field of a monitored block changes,
-            // update the checkbox in the flyout based on whether
-            // a monitor for that current combination of selected parameters exists
-            // e.g.
-            // 1. check (current [v year])
-            // 2. switch dropdown in flyout block to (current [v minute])
-            // 3. the checkbox should become unchecked if we're not already
-            //    monitoring current minute
+        this.updateBlock(args.id, (block => {
+            if (typeof block === 'undefined') return;
+            switch (args.element) {
+            case 'field':
+                // TODO when the field of a monitored block changes,
+                // update the checkbox in the flyout based on whether
+                // a monitor for that current combination of selected parameters exists
+                // e.g.
+                // 1. check (current [v year])
+                // 2. switch dropdown in flyout block to (current [v minute])
+                // 3. the checkbox should become unchecked if we're not already
+                //    monitoring current minute
 
-            // Update block value
-            if (!block.fields[args.name]) return;
-            if (
-                args.name === 'VARIABLE' ||
-                    args.name === 'LIST' ||
-                    args.name === 'BROADCAST_OPTION'
-            ) {
-                // Get variable name using the id in args.value.
-                const variable = this.runtime
-                    .getEditingTarget()
-                    .lookupVariableById(args.value);
-                if (variable) {
-                    block.fields[args.name].value = variable.name;
-                    block.fields[args.name].id = args.value;
-                }
-            } else {
-                // Changing the value in a dropdown
-                block.fields[args.name].value = args.value;
-
-                // The selected item in the sensing of block menu needs to change based on the
-                // selected target.  Set it to the first item in the menu list.
-                // TODO: (#1787)
-                if (block.opcode === 'sensing_of_object_menu') {
-                    if (block.fields.OBJECT.value === '_stage_') {
-                        this.getBlock(block.parent).fields.PROPERTY.value =
-                                'backdrop #';
-                    } else {
-                        this.getBlock(block.parent).fields.PROPERTY.value =
-                                'x position';
+                // Update block value
+                if (!block.fields[args.name]) return;
+                if (
+                    args.name === 'VARIABLE' ||
+                        args.name === 'LIST' ||
+                        args.name === 'BROADCAST_OPTION'
+                ) {
+                    // Get variable name using the id in args.value.
+                    const variable = this.runtime
+                        .getEditingTarget()
+                        .lookupVariableById(args.value);
+                    if (variable) {
+                        block.fields[args.name].value = variable.name;
+                        block.fields[args.name].id = args.value;
                     }
-                    this.runtime.requestBlocksUpdate();
-                }
+                } else {
+                    // Changing the value in a dropdown
+                    block.fields[args.name].value = args.value;
 
-                const flyoutBlock =
-                        block.shadow && block.parent ?
-                            this.getBlock(block.parent) :
-                            block;
-                if (flyoutBlock.isMonitored) {
-                    this.runtime.requestUpdateMonitor(
-                        Map({
-                            id: flyoutBlock.id,
-                            params: this._getBlockParams(flyoutBlock)
-                        })
+                    // The selected item in the sensing of block menu needs to change based on the
+                    // selected target.  Set it to the first item in the menu list.
+                    // TODO: (#1787)
+                    if (block.opcode === 'sensing_of_object_menu') {
+                        if (block.fields.OBJECT.value === '_stage_') {
+                            this.getBlock(block.parent).fields.PROPERTY.value =
+                                    'backdrop #';
+                        } else {
+                            this.getBlock(block.parent).fields.PROPERTY.value =
+                                    'x position';
+                        }
+                        this.runtime.requestBlocksUpdate();
+                    }
+
+                    const flyoutBlock =
+                            block.shadow && block.parent ?
+                                this.getBlock(block.parent) :
+                                block;
+                    if (flyoutBlock.isMonitored) {
+                        this.runtime.requestUpdateMonitor(
+                            Map({
+                                id: flyoutBlock.id,
+                                params: this._getBlockParams(flyoutBlock)
+                            })
+                        );
+                    }
+                }
+                break;
+            case 'mutation':
+                block.mutation = mutationAdapter(args.value);
+                break;
+            case 'checkbox': {
+                // A checkbox usually has a one to one correspondence with the monitor
+                // block but in the case of monitored reporters that have arguments,
+                // map the old id to a new id, creating a new monitor block if necessary
+                if (
+                    block.fields &&
+                        Object.keys(block.fields).length > 0 &&
+                        block.opcode !== 'data_variable' &&
+                        block.opcode !== 'data_listcontents'
+                ) {
+                    // This block has an argument which needs to get separated out into
+                    // multiple monitor blocks with ids based on the selected argument
+                    const newId = getMonitorIdForBlockWithArgs(
+                        block.id,
+                        block.fields
                     );
-                }
-            }
-            break;
-        case 'mutation':
-            block.mutation = mutationAdapter(args.value);
-            break;
-        case 'checkbox': {
-            // A checkbox usually has a one to one correspondence with the monitor
-            // block but in the case of monitored reporters that have arguments,
-            // map the old id to a new id, creating a new monitor block if necessary
-            if (
-                block.fields &&
-                    Object.keys(block.fields).length > 0 &&
-                    block.opcode !== 'data_variable' &&
-                    block.opcode !== 'data_listcontents'
-            ) {
-                // This block has an argument which needs to get separated out into
-                // multiple monitor blocks with ids based on the selected argument
-                const newId = getMonitorIdForBlockWithArgs(
-                    block.id,
-                    block.fields
-                );
-                    // Note: we're not just constantly creating a longer and longer id everytime we check
-                    // the checkbox because we're using the id of the block in the flyout as the base
+                        // Note: we're not just constantly creating a longer and longer id everytime we check
+                        // the checkbox because we're using the id of the block in the flyout as the base
 
-                // check if a block with the new id already exists, otherwise create
-                let newBlock = this.runtime.monitorBlocks.getBlock(newId);
-                if (!newBlock) {
-                    newBlock = JSON.parse(JSON.stringify(block));
-                    newBlock.id = newId;
-                    this.runtime.monitorBlocks.createBlock(newBlock);
+                    // check if a block with the new id already exists, otherwise create
+                    let newBlock = this.runtime.monitorBlocks.getBlock(newId);
+                    if (!newBlock) {
+                        newBlock = JSON.parse(JSON.stringify(block));
+                        newBlock.id = newId;
+                        this.runtime.monitorBlocks.createBlock(newBlock);
+                    }
+
+                    block = newBlock; // Carry on through the rest of this code with newBlock
                 }
 
-                block = newBlock; // Carry on through the rest of this code with newBlock
-            }
+                const wasMonitored = block.isMonitored;
+                block.isMonitored = args.value;
 
-            const wasMonitored = block.isMonitored;
-            block.isMonitored = args.value;
-
-            // Variable blocks may be sprite specific depending on the owner of the variable
-            let isSpriteLocalVariable = false;
-            if (block.opcode === 'data_variable') {
-                isSpriteLocalVariable =
-                        !this.runtime.getTargetForStage().variables[
-                            block.fields.VARIABLE.id
-                        ];
-            } else if (block.opcode === 'data_listcontents') {
-                isSpriteLocalVariable =
-                        !this.runtime.getTargetForStage().variables[
-                            block.fields.LIST.id
-                        ];
-            }
-
-            const isSpriteSpecific =
-                    isSpriteLocalVariable ||
-                    (Object.prototype.hasOwnProperty.call(
-                        this.runtime.monitorBlockInfo,
-                        block.opcode
-                    ) &&
-                        this.runtime.monitorBlockInfo[block.opcode]
-                            .isSpriteSpecific);
-            if (isSpriteSpecific) {
-                // If creating a new sprite specific monitor, the only possible target is
-                // the current editing one b/c you cannot dynamically create monitors.
-                // Also, do not change the targetId if it has already been assigned
-                block.targetId =
-                        block.targetId || this.runtime.getEditingTarget().id;
-            } else {
-                block.targetId = null;
-            }
-
-            if (wasMonitored && !block.isMonitored) {
-                this.runtime.requestHideMonitor(block.id);
-            } else if (!wasMonitored && block.isMonitored) {
-                // Tries to show the monitor for specified block. If it doesn't exist, add the monitor.
-                if (!this.runtime.requestShowMonitor(block.id)) {
-                    this.runtime.requestAddMonitor(
-                        MonitorRecord({
-                            id: block.id,
-                            targetId: block.targetId,
-                            spriteName: block.targetId ?
-                                this.runtime
-                                    .getTargetById(block.targetId)
-                                    .getName() :
-                                null,
-                            opcode: block.opcode,
-                            params: this._getBlockParams(block),
-                            // @todo(vm#565) for numerical values with decimals, some countries use comma
-                            value: '',
-                            mode:
-                                    block.opcode === 'data_listcontents' ?
-                                        'list' :
-                                        'default'
-                        })
-                    );
+                // Variable blocks may be sprite specific depending on the owner of the variable
+                let isSpriteLocalVariable = false;
+                if (block.opcode === 'data_variable') {
+                    isSpriteLocalVariable =
+                            !this.runtime.getTargetForStage().variables[
+                                block.fields.VARIABLE.id
+                            ];
+                } else if (block.opcode === 'data_listcontents') {
+                    isSpriteLocalVariable =
+                            !this.runtime.getTargetForStage().variables[
+                                block.fields.LIST.id
+                            ];
                 }
-            }
-            break;
-        }
-        }
 
+                const isSpriteSpecific =
+                        isSpriteLocalVariable ||
+                        (Object.prototype.hasOwnProperty.call(
+                            this.runtime.monitorBlockInfo,
+                            block.opcode
+                        ) &&
+                            this.runtime.monitorBlockInfo[block.opcode]
+                                .isSpriteSpecific);
+                if (isSpriteSpecific) {
+                    // If creating a new sprite specific monitor, the only possible target is
+                    // the current editing one b/c you cannot dynamically create monitors.
+                    // Also, do not change the targetId if it has already been assigned
+                    block.targetId =
+                            block.targetId || this.runtime.getEditingTarget().id;
+                } else {
+                    block.targetId = null;
+                }
+
+                if (wasMonitored && !block.isMonitored) {
+                    this.runtime.requestHideMonitor(block.id);
+                } else if (!wasMonitored && block.isMonitored) {
+                    // Tries to show the monitor for specified block. If it doesn't exist, add the monitor.
+                    if (!this.runtime.requestShowMonitor(block.id)) {
+                        this.runtime.requestAddMonitor(
+                            MonitorRecord({
+                                id: block.id,
+                                targetId: block.targetId,
+                                spriteName: block.targetId ?
+                                    this.runtime
+                                        .getTargetById(block.targetId)
+                                        .getName() :
+                                    null,
+                                opcode: block.opcode,
+                                params: this._getBlockParams(block),
+                                // @todo(vm#565) for numerical values with decimals, some countries use comma
+                                value: '',
+                                mode:
+                                        block.opcode === 'data_listcontents' ?
+                                            'list' :
+                                            'default'
+                            })
+                        );
+                    }
+                }
+                break;
+            }
+            }
+        }));
         this.emitProjectChanged();
 
         this.resetCache();
@@ -871,79 +871,86 @@ class Blocks {
             return;
         }
 
-        const block = this.getBlock(e.id);
-        // Track whether a change actually occurred
-        // ignoring changes like routine re-positioning
-        // of a block when loading a workspace
-        let didChange = false;
+        this.updateBlock(e.id, (block => {
+            // Track whether a change actually occurred
+            // ignoring changes like routine re-positioning
+            // of a block when loading a workspace
+            let didChange = false;
 
-        // Move coordinate changes.
-        if (e.newCoordinate) {
-            didChange =
-                block.x !== e.newCoordinate.x || block.y !== e.newCoordinate.y;
+            // Move coordinate changes.
+            if (e.newCoordinate) {
+                didChange =
+                    block.x !== e.newCoordinate.x || block.y !== e.newCoordinate.y;
 
-            block.x = e.newCoordinate.x;
-            block.y = e.newCoordinate.y;
-        }
-
-        // Remove from any old parent.
-        if (typeof e.oldParent !== 'undefined') {
-            const oldParent = this.getBlock(e.oldParent);
-            if (
-                typeof e.oldInput !== 'undefined' &&
-                oldParent.inputs[e.oldInput].block === e.id
-            ) {
-                // This block was connected to the old parent's input.
-                oldParent.inputs[e.oldInput].block = null;
-            } else if (oldParent.next === e.id) {
-                // This block was connected to the old parent's next connection.
-                oldParent.next = null;
+                block.x = e.newCoordinate.x;
+                block.y = e.newCoordinate.y;
             }
-            this.getBlock(e.id).parent = null;
-            didChange = true;
-        }
 
-        // Is this block a top-level block?
-        if (typeof e.newParent === 'undefined') {
-            this._addScript(e.id);
-        } else {
-            // Remove script, if one exists.
-            this._deleteScript(e.id);
-            // Otherwise, try to connect it in its new place.
-            if (typeof e.newInput === 'undefined') {
-                // Moved to the new parent's next connection.
-                this.getBlock(e.newParent).next = e.id;
+            // Remove from any old parent.
+            if (typeof e.oldParent !== 'undefined') {
+                this.updateBlock(e.oldParent, (oldParent => {
+                    if (
+                        typeof e.oldInput !== 'undefined' &&
+                        oldParent.inputs[e.oldInput].block === e.id
+                    ) {
+                        // This block was connected to the old parent's input.
+                        oldParent.inputs[e.oldInput].block = null;
+                    } else if (oldParent.next === e.id) {
+                        // This block was connected to the old parent's next connection.
+                        oldParent.next = null;
+                    }
+                }));
+                block.parent = null;
+                didChange = true;
+            }
+
+            // Is this block a top-level block?
+            if (typeof e.newParent === 'undefined') {
+                this._addScript(e.id);
             } else {
-                // Moved to the new parent's input.
-                // Don't obscure the shadow block.
-                let oldShadow = null;
-                if (
-                    Object.prototype.hasOwnProperty.call(
-                        this.getBlock(e.newParent).inputs,
-                        e.newInput
-                    )
-                ) {
-                    oldShadow =
-                        this.getBlock(e.newParent).inputs[e.newInput].shadow;
+                // Remove script, if one exists.
+                this._deleteScript(e.id);
+                // Otherwise, try to connect it in its new place.
+                if (typeof e.newInput === 'undefined') {
+                    // Moved to the new parent's next connection.
+                    this.updateBlock(e.newParent, b => {
+                        b.next = e.id;
+                    });
+                } else {
+                    // Moved to the new parent's input.
+                    // Don't obscure the shadow block.
+                    let oldShadow = null;
+                    if (
+                        Object.prototype.hasOwnProperty.call(
+                            this.getBlock(e.newParent).inputs,
+                            e.newInput
+                        )
+                    ) {
+                        oldShadow =
+                            this.getBlock(e.newParent).inputs[e.newInput].shadow;
+                    }
+
+                    // If the block being attached is itself a shadow, make sure to set
+                    // both block and shadow to that blocks ID. This happens when adding
+                    // inputs to a custom procedure.
+                    if (this.getBlock(e.id).shadow) oldShadow = e.id;
+
+                    this.updateBlock(e.newParent, b => {
+                        b.inputs[e.newInput] = {
+                            name: e.newInput,
+                            block: e.id,
+                            shadow: oldShadow
+                        };
+                    });
                 }
-
-                // If the block being attached is itself a shadow, make sure to set
-                // both block and shadow to that blocks ID. This happens when adding
-                // inputs to a custom procedure.
-                if (this.getBlock(e.id).shadow) oldShadow = e.id;
-
-                this.getBlock(e.newParent).inputs[e.newInput] = {
-                    name: e.newInput,
-                    block: e.id,
-                    shadow: oldShadow
-                };
+                block.parent = e.newParent;
+                didChange = true;
             }
-            this.getBlock(e.id).parent = e.newParent;
-            didChange = true;
-        }
-        this.resetCache();
+                
+            this.resetCache();
 
-        if (didChange) this.emitProjectChanged();
+            if (didChange) this.emitProjectChanged();
+        }));
     }
 
     /**
@@ -1011,7 +1018,9 @@ class Blocks {
         this._deleteScript(blockId);
 
         // Delete block itself.
-        delete this.getBlock(blockId);
+        this.updateTargetInDoc(t => {
+            delete t.blocks[blockId];
+        });
 
         this.resetCache();
         this.emitProjectChanged();
@@ -1273,7 +1282,7 @@ class Blocks {
      * @return {string} String of XML representing this object's blocks.
      */
     toXML (comments) {
-        return this._scripts
+        return this.getScripts()
             .map(script => this.blockToXML(script, comments))
             .join();
     }
@@ -1437,11 +1446,13 @@ class Blocks {
      * @param {?string} topBlockId ID of block that starts the script.
      */
     _addScript (topBlockId) {
-        const i = this._scripts.indexOf(topBlockId);
+        const i = this.getScripts().indexOf(topBlockId);
         if (i > -1) return; // Already in scripts.
-        this._scripts.push(topBlockId);
-        // Update `topLevel` property on the top block.
-        this.getBlock(topBlockId).topLevel = true;
+        this.updateTargetInDoc(t => {
+            if (!t.scripts) { t.scripts = []}
+            t.scripts.push(topBlockId);
+            t.blocks[topBlockId].topLevel = true;
+        });
     }
 
     /**
@@ -1449,10 +1460,13 @@ class Blocks {
      * @param {?string} topBlockId ID of block that starts the script.
      */
     _deleteScript (topBlockId) {
-        const i = this._scripts.indexOf(topBlockId);
-        if (i > -1) this._scripts.splice(i, 1);
-        // Update `topLevel` property on the top block.
-        if (this.getBlock(topBlockId)) this.getBlock(topBlockId).topLevel = false;
+        const i = this.getScripts().indexOf(topBlockId);
+        
+        if (i === -1) return; // Not in scripts.
+        this.updateTargetInDoc(t => {
+            t.scripts.splice(i, 1);
+            t.blocks[topBlockId].topLevel = false;
+        });
     }
 }
 
@@ -1515,7 +1529,7 @@ BlocksRuntimeCache.getScripts = function (blocks, opcode) {
     if (!scripts) {
         scripts = blocks._cache.scripts[opcode] = [];
 
-        const allScripts = blocks._scripts;
+        const allScripts = blocks.getScripts();
         for (let i = 0; i < allScripts.length; i++) {
             const topBlockId = allScripts[i];
             const block = blocks.getBlock(topBlockId);

@@ -22,7 +22,7 @@ class Sprite {
         console.log('current value', this.getTargetFromDoc());
         if (!blocks) {
             // Shared set of blocks for all clones.
-            blocks = new Blocks(runtime);
+            blocks = new Blocks(runtime, false, automergeObjectId);
         }
         this.blocks = blocks;
 

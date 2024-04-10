@@ -1023,7 +1023,7 @@ const parseScratchObject = function (object, runtime, extensions, zip, assets) {
     }
 
     // Blocks container for this object.
-    const blocksObj = new Blocks(runtime, object[Symbol.for('_am_objectId')]);
+    const blocksObj = new Blocks(runtime, false, object[Symbol.for('_am_objectId')]);
 
     // @todo: For now, load all Scratch objects (stage/sprites) as a Sprite.
     const sprite = new Sprite(

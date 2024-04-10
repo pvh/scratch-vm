@@ -28,7 +28,7 @@ class Target extends EventEmitter {
         }
 
         if (!blocks) {
-            blocks = new Blocks(runtime);
+            blocks = new Blocks(runtime, false, automergeObjectId);
         }
 
         /**
