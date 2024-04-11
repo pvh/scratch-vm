@@ -53,6 +53,7 @@ export default class VirtualMachine extends EventEmitter {
     constructor () {
         super();
 
+        window.vm = this;
         console.log('Repo loaded', Repo);
         this.repo = new Repo({network: [new BroadcastChannelNetworkAdapter(), new BrowserWebSocketClientAdapter('wss://sync.automerge.org')]});
         
@@ -68,9 +69,7 @@ export default class VirtualMachine extends EventEmitter {
          * @type {!Runtime}
          */
         this.runtime = new Runtime(handle);
-        handle.on('change', () => {
-            this.runtime.targets.forEach(target => target.updateAllDrawableProperties());
-        });
+        
 
         centralDispatch.setService('runtime', this.runtime).catch(e => {
             log.error(
@@ -84,6 +83,7 @@ export default class VirtualMachine extends EventEmitter {
          * @type {Target}
          */
         this.editingTarget = null;
+        this.allowEvents = true;
 
         /**
          * The currently dragging target, for redirecting IO data.
@@ -1323,12 +1323,21 @@ export default class VirtualMachine extends EventEmitter {
         return formatMessage.setup().locale;
     }
 
+    enableEvents() {
+        console.log('enableEvents');
+        this.allowEvents = true;
+    }
+    disableEvents() {
+        console.log('disableEvents');
+        this.allowEvents = false;
+    }
+
     /**
      * Handle a Blockly event for the current editing target.
      * @param {!Blockly.Event} e Any Blockly event.
      */
     blockListener (e) {
-        if (this.editingTarget) {
+        if (this.allowEvents && this.editingTarget) {
             this.editingTarget.blocks.blocklyListen(e);
         }
     }
@@ -1531,6 +1540,11 @@ export default class VirtualMachine extends EventEmitter {
      * of the current editing target's blocks.
      */
     emitWorkspaceUpdate () {
+        if (!this.enableEvents) {
+            console.log('')
+            return;
+        }
+        
         // Create a list of broadcast message Ids according to the stage variables
         const stageVariables = this.runtime.getTargetForStage().variables;
         let messageIds = [];

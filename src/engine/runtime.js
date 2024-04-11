@@ -2486,6 +2486,32 @@ class Runtime extends EventEmitter {
      * Handle that the project has loaded in the Virtual Machine.
      */
     handleProjectLoaded () {
+        this.handle.on('change', ({doc, handle, patches, patchInfo}) => {
+            const changedTargets = new Set();
+            let shouldUpdateBlocks = false;
+            
+            patches.forEach(patch => {
+                const patchPath = patch.path;
+                if (patchPath[0] === 'targets') {
+                    if (patchPath.includes('blocks')) {
+                        shouldUpdateBlocks = true;
+                    }
+                    else {
+                        // assume a renderer update
+                        changedTargets.add(patchPath[1]);
+                    }
+                }
+            });
+
+            changedTargets.forEach(targetIdx => {
+                this.targets[targetIdx].updateAllDrawableProperties();
+            });
+
+            if (shouldUpdateBlocks) {
+                this.requestBlocksUpdate();
+            }
+        });
+
         this.emit(Runtime.PROJECT_LOADED);
         this.resetRunId();
     }

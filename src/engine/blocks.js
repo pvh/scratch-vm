@@ -10,6 +10,8 @@ const log = require('../util/log');
 const Variable = require('./variable');
 const getMonitorIdForBlockWithArgs = require('../util/get-monitor-id');
 
+const deepFreeze = obj => (Object.freeze(obj), Object.keys(obj).forEach(key => typeof obj[key] === 'object' && !Object.isFrozen(obj[key]) && deepFreeze(obj[key])), obj);
+        
 /**
  * @fileoverview
  * Store and mutate the VM block representation,
@@ -118,7 +120,7 @@ class Blocks {
     }
 
     getBlocks () {
-        return this.getTargetFromDoc()?.blocks;
+        return deepFreeze(structuredClone(this.getTargetFromDoc()?.blocks || []));
     }
 
     /**
@@ -136,7 +138,6 @@ class Blocks {
      * @return {?object} Metadata about the block, if it exists.
      */
     getBlock (blockId) {
-        const deepFreeze = obj => (Object.freeze(obj), Object.keys(obj).forEach(key => typeof obj[key] === 'object' && !Object.isFrozen(obj[key]) && deepFreeze(obj[key])), obj);
         const clone = structuredClone(this.getTargetFromDoc()?.blocks?.[blockId]);
         return clone ? deepFreeze(clone) : clone;
     }
@@ -873,7 +874,8 @@ class Blocks {
             return;
         }
 
-        this.updateBlock(e.id, (block => {
+        this.updateTargetInDoc(target => {
+            const block = target.blocks[e.id];
             // Track whether a change actually occurred
             // ignoring changes like routine re-positioning
             // of a block when loading a workspace
@@ -890,18 +892,17 @@ class Blocks {
 
             // Remove from any old parent.
             if (typeof e.oldParent !== 'undefined') {
-                this.updateBlock(e.oldParent, (oldParent => {
-                    if (
-                        typeof e.oldInput !== 'undefined' &&
-                        oldParent.inputs[e.oldInput].block === e.id
-                    ) {
-                        // This block was connected to the old parent's input.
-                        oldParent.inputs[e.oldInput].block = null;
-                    } else if (oldParent.next === e.id) {
-                        // This block was connected to the old parent's next connection.
-                        oldParent.next = null;
-                    }
-                }));
+                const oldParent = target.blocks[e.oldParent]
+                if (
+                    typeof e.oldInput !== 'undefined' &&
+                    oldParent.inputs[e.oldInput].block === e.id
+                ) {
+                    // This block was connected to the old parent's input.
+                    oldParent.inputs[e.oldInput].block = null;
+                } else if (oldParent.next === e.id) {
+                    // This block was connected to the old parent's next connection.
+                    oldParent.next = null;
+                }
                 block.parent = null;
                 didChange = true;
             }
@@ -915,9 +916,8 @@ class Blocks {
                 // Otherwise, try to connect it in its new place.
                 if (typeof e.newInput === 'undefined') {
                     // Moved to the new parent's next connection.
-                    this.updateBlock(e.newParent, b => {
-                        b.next = e.id;
-                    });
+                    const newParent = target.blocks[e.newParent];
+                    newParent.next = e.id;
                 } else {
                     // Moved to the new parent's input.
                     // Don't obscure the shadow block.
@@ -937,13 +937,12 @@ class Blocks {
                     // inputs to a custom procedure.
                     if (this.getBlock(e.id).shadow) oldShadow = e.id;
 
-                    this.updateBlock(e.newParent, b => {
-                        b.inputs[e.newInput] = {
-                            name: e.newInput,
-                            block: e.id,
-                            shadow: oldShadow
-                        };
-                    });
+                    const newParent = target.blocks[e.newParent];
+                    newParent.inputs[e.newInput] = {
+                        name: e.newInput,
+                        block: e.id,
+                        shadow: oldShadow
+                    };
                 }
                 block.parent = e.newParent;
                 didChange = true;
@@ -952,7 +951,7 @@ class Blocks {
             this.resetCache();
 
             if (didChange) this.emitProjectChanged();
-        }));
+        });
     }
 
     /**
